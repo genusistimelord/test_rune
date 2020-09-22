@@ -1,5 +1,5 @@
 mod npc;
-
+use rune::EmitDiagnostics as _;
 use runestick::{Value, FromValue as _, Vm};
 use npc::*;
 use std::sync::Arc;
@@ -21,7 +21,7 @@ fn main() {
   npc.pos.map = 1;
   world.insert(npc);
 
-  let mut testscript = match RuneNPCObject::new("test.rs") {
+  let testscript = match RuneNPCObject::new("test.rs") {
     Some(n) => n,
     None => {
       println!("Error did not load script or something derp.");
@@ -31,10 +31,11 @@ fn main() {
 
   let vm = Vm::new(testscript.context.clone(), testscript.unit.clone());
 
-  let mut npc: Npc = match vm.call(&["npc_init"], ()) {
+  let npc: Npc = match vm.call(&["npc_init"], ()) {
     Ok(n) => Npc::from_value(n).unwrap(),
     Err(e) => {
-      println!("Error: {}", e);
+      let mut writer = rune::termcolor::StandardStream::stderr(rune::termcolor::ColorChoice::Always);
+      e.emit_diagnostics(&mut writer, &testscript.sources).unwrap();
       return;
     }
   };
@@ -42,19 +43,25 @@ fn main() {
   println!("x: {}, y: {}, map: {}", npc.pos.x, npc.pos.y, npc.pos.map);
 
   world.insert(npc);
-  let npc = world.npcs.get(&2).unwrap().borrow_mut();
 
-  let vm = Vm::new(testscript.context.clone(), testscript.unit.clone());
-  let execution = match vm.call(&["calculate"], (&*npc,)) {
-    Ok(n) => n,
-    Err(e) => {
-      println!("Error: {}", e);
-      return;
-    }
-  };
+  {
+    let mut npc = world.npcs.get(&2).unwrap().borrow_mut();
 
-  let value = i64::from_value(execution).unwrap();
-  println!("{}", value);
+    let vm = Vm::new(testscript.context.clone(), testscript.unit.clone());
+    let execution = match vm.call(&["calculate"], (&mut *npc,)) {
+      Ok(n) => n,
+      Err(e) => {
+        let mut writer = rune::termcolor::StandardStream::stderr(rune::termcolor::ColorChoice::Always);
+        e.emit_diagnostics(&mut writer, &testscript.sources).unwrap();
+        return;
+      }
+    };
+
+    let value = i64::from_value(execution).unwrap();
+    println!("{}", value);
+  }
+
+
 
   for i in 0..world.ids.len() {
     let mut npc1 = world.npcs.get(&world.ids[i]).unwrap().borrow_mut();
@@ -78,12 +85,12 @@ fn main() {
     let name = match vm.call(&["npc_name"], (npc.id,)) {
       Ok(n) => String::from_value(n).unwrap(),
       Err(e) => {
-        println!("Error: {}", e);
+        let mut writer = rune::termcolor::StandardStream::stderr(rune::termcolor::ColorChoice::Always);
+        e.emit_diagnostics(&mut writer, &testscript.sources).unwrap();
         return;
       }
     };
 
     println!("Name: {}, x: {}, y: {}, map: {}, hp: {}", name, npc.pos.x, npc.pos.y, npc.pos.map, npc.vit.hp);
   }
-
 }
